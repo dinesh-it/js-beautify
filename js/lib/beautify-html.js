@@ -194,11 +194,21 @@
             this.get_content = function() { //function to capture regular content between tags
                 var input_char = '',
                     content = [],
-                    space = false; //if a space is needed
+                    space = false, //if a space is needed
+                    tt_markup = false; //template toolkit markup found
 
                 while (this.input.charAt(this.pos) !== '<') {
                     if (this.pos >= this.input.length) {
                         return content.length ? content.join('') : ['', 'TK_EOF'];
+                    }
+
+                    //for perl template toolkit [% %] markup.
+                    if (this.input.substr(this.pos, 2) === '[%') {
+                        space = false;
+                        tt_markup = true;
+                        content.push('');
+                        this.print_newline(false, content);
+                        this.print_indentation(content);
                     }
 
                     if (this.traverse_whitespace()) {
@@ -226,6 +236,9 @@
                     this.pos++;
                     this.line_char_count++;
                     content.push(input_char); //letter at-a-time (or string) inserted to an array
+                }
+                if (tt_markup && content[content.length - 2] + input_char === '%]') {
+                    this.print_newline(false, content); // insert a line space on end of Template Toolkit tag '%]'
                 }
                 return content.length ? content.join('') : '';
             };
@@ -328,10 +341,21 @@
                         continue;
                     }
 
+                    // don't format template toolkit markup inside tag
+                    if(input_char === '[' && this.input.charAt(this.pos) === '%'){
+                        input_char += this.get_unformatted('%]');
+                        if( !input_char.match(/\[%\s/) ){
+                            input_char = input_char.replace('[%','[% ');
+                        }
+                        if( !input_char.match(/\s%\]/) ){
+                            input_char = input_char.replace('%]',' %]');
+                        }
+                        space = true;
+                    }
+
                     if (input_char === "'" || input_char === '"') {
                         input_char += this.get_unformatted(input_char);
                         space = true;
-
                     }
 
                     if (input_char === '=') { //no space before =

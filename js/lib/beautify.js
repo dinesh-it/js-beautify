@@ -1416,7 +1416,7 @@
         var digit = /[0-9]/;
 
         var punct = ('+ - * / % & ++ -- = += -= *= /= %= == === != !== > < >= <= >> << >>> >>>= >>= <<= && &= | || ! ~ , : ? ^ ^= |= :: =>'
-                +' <%= <% %> <?= <? ?>').split(' '); // try to be a good boy and try not to break the markup language identifiers
+                +' [% %] <%= <% %> <?= <? ?>').split(' '); // try to be a good boy and try not to break the markup language identifiers
 
         // words which should always start on new line.
         this.line_starters = 'continue,try,throw,return,var,let,const,if,switch,case,default,for,while,break,function,yield,import,export'.split(',');
@@ -1494,6 +1494,7 @@
 
 
             var c = input.charAt(parser_pos);
+            var tt_markup = false; // used for perl Template Toolkit markup
             parser_pos += 1;
 
             while (in_array(c, whitespace)) {
@@ -1516,6 +1517,8 @@
                 c = input.charAt(parser_pos);
                 parser_pos += 1;
             }
+
+            tt_markup = ((c + input.charAt(parser_pos)) === '[%');
 
             if(whitespace_on_this_line.length) {
                 whitespace_before_token = whitespace_on_this_line.join('');
@@ -1590,7 +1593,7 @@
                 return [c, 'TK_WORD'];
             }
 
-            if (c === '(' || c === '[') {
+            if (c === '(' || (c === '[' && !tt_markup)) { // tt_markup = '[%'
                 return [c, 'TK_START_EXPR'];
             }
 
@@ -1681,7 +1684,7 @@
                         resulting_string += input.charAt(parser_pos);
                         if (!esc) {
                             esc = input.charAt(parser_pos) === '\\';
-                            if (input.charAt(parser_pos) === '[') {
+                            if (input.charAt(parser_pos) === '[' && !tt_markup) {
                                 in_char_class = true;
                             } else if (input.charAt(parser_pos) === ']') {
                                 in_char_class = false;
@@ -1791,7 +1794,7 @@
                     } while (parser_pos < input_length && c !== '#' && c !== '=');
                     if (c === '#') {
                         //
-                    } else if (input.charAt(parser_pos) === '[' && input.charAt(parser_pos + 1) === ']') {
+                    } else if ((input.charAt(parser_pos) === '[' && !tt_markup) && input.charAt(parser_pos + 1) === ']') {
                         sharp += '[]';
                         parser_pos += 2;
                     } else if (input.charAt(parser_pos) === '{' && input.charAt(parser_pos + 1) === '}') {
@@ -1821,6 +1824,28 @@
 
             if (c === '.') {
                 return [c, 'TK_DOT'];
+            }
+
+            // Following code is to handle the perl template toolkit markup
+            if (tt_markup) {
+            	while (parser_pos < input_length && (c[c.length - 2] + c[c.length - 1]) != '%]') {
+            		if (c.length == 2 && input.charAt(parser_pos) != ' ') {
+            			c += ' ';
+            		}
+            		c += input.charAt(parser_pos);
+            		parser_pos += 1;
+            		if (parser_pos >= input_length) {
+            			break;
+            		}
+            	}
+            	// change [% foo%] -> [% foo %]
+				if( !c.match(/\s%\]/)){
+            	    c = c.replace(/%\]/,' %]');
+				}
+            	if (c.match(/\s(if|elsif|else|foreach|end)\s/i)) {
+            		print_newline(false, true);
+            	}
+            	return [c, 'TK_UNKNOWN'];
             }
 
             if (in_array(c, punct)) {
